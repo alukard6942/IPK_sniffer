@@ -17,7 +17,6 @@ int main(int argc, char *argv[]) {
 
 	char *interface = NULL;
 	pcap_t *handle;					/* Session handle */
-	char *dev;						/* The device to sniff on */
 	char errbuf[PCAP_ERRBUF_SIZE];	/* Error string */
 	struct bpf_program fp;			/* The compiled filter */
 	std::string filter_exp = "";
@@ -95,22 +94,16 @@ int main(int argc, char *argv[]) {
 		} 
 	}
 
-	/* Define the device */
-	dev = pcap_lookupdev(errbuf);
-	if (dev == NULL) {
-		fprintf(stderr, "Couldn't find default device: %s\n", errbuf);
-		return(2);
-	}
 	/* Find the properties for the device */
-	if (pcap_lookupnet(dev, &net, &mask, errbuf) == -1) {
-		fprintf(stderr, "Couldn't get netmask for device %s: %s\n", dev, errbuf);
+	if (pcap_lookupnet(interface, &net, &mask, errbuf) == -1) {
+		fprintf(stderr, "Couldn't get netmask for device %s: %s\n", interface, errbuf);
 		net = 0;
 		mask = 0;
 	}
 	/* Open the session in promiscuous mode */
-	handle = pcap_open_live(dev, BUFSIZ, 1, 1000, errbuf);
+	handle = pcap_open_live(interface, BUFSIZ, 1, 1000, errbuf);
 	if (handle == NULL) {
-		fprintf(stderr, "Couldn't open device %s: %s\n", dev, errbuf);
+		fprintf(stderr, "Couldn't open device %s: %s\n", interface, errbuf);
 		return(2);
 	}
 	/* Compile and apply the filter */
