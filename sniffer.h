@@ -16,8 +16,10 @@ using namespace std;
 
 class Sniffer {
 	public:
-		Sniffer(string device_name);
+		Sniffer();
 		~Sniffer();
+		void set_name(string device_name);
+
 		void filter_typ (string expr);
 		void filter_port(string expr);
 		void filter_clean();
@@ -25,7 +27,7 @@ class Sniffer {
 		static
 		void print_all_devs();
 
-		Packet next();
+		void next();
 		void print();
 		string to_printable();
 

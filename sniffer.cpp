@@ -1,4 +1,20 @@
 /**
+This document is Copyright 2002 Tim Carstens. All rights reserved. Redistribution and use, with or without modification, are permitted provided that the following conditions are met:
+
+Redistribution must retain the above copyright notice and this list of conditions.
+The name of Tim Carstens may not be used to endorse or promote products derived from this document without specific prior written permission.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+/**
  * File: sniffer.cpp
  * Author: xkoval18 <xkoval18@github>
  * Date: 24.04.2021
@@ -17,9 +33,11 @@
 
 using namespace std;
 
+Sniffer::Sniffer(){
+}
 
 // viz. https://www.tcpdump.org/pcap.html
-Sniffer::Sniffer(string device_name){
+void Sniffer::set_name(string device_name){
 	this->Device = device_name;
 	char errbuff[PCAP_ERRBUF_SIZE];
 	
@@ -66,11 +84,9 @@ void Sniffer::print_all_devs(){
 // the main sniffing fc
 void Sniffer::next(){
 
-	DBG( filters() );
-
 	const u_char *Packet;			/* The actual packet */
 	
-	Packet = pcap_next(Handle, &Header);
+	packet = pcap_next(Handle, &Header);
 }
 
 string Sniffer::to_printable(){
@@ -80,7 +96,7 @@ string Sniffer::to_printable(){
 	for (int i =0; i< Header.len; i++){
 		char c = packet[i];
 
-		if (c <= 32 || c >= 127){
+		if (c <= 32 || c >= 126){
 			out += '.';
 		} else {
 			out += c;
@@ -91,51 +107,50 @@ string Sniffer::to_printable(){
 }
 
 void Sniffer::print(){
-	static int iter = 0;
-	static int linelen = 20;
 
 	auto printable = to_printable();
 
-	// header
-	printf("%d. len:[%d]\n", Header.len);
 
 	uint32_t *ipadd = (uint32_t *)(packet + SIZE_ETHERNET);
 	struct in_addr ip_addr;
     ip_addr.s_addr = *ipadd;
-	auto fromadd = inet_ntoa(*ip_addr);
 
-
-	// time viz stack
+	// get time form sec since epoch
 	struct tm *p = localtime((const time_t*)&Header.ts.tv_sec);
-  	char form_time[100];
-  	size_t len = strftime(form_time, sizeof form_time - 1, "%FT%T%z", p);
+  	char time_s[100];
+  	size_t len = strftime(time_s, sizeof time_s - 1, "%FT%T%z", p);
   	// move last 2 digits
-  	if (len > 1) {
-  	  char minute[] = { form_time[len-2], form_time[len-1], '\0' };
-  	  sprintf(form_time + len - 2, ":%s", minute);
+  	if (len >= 0) {
+  	  char minute[] = { time_s[len-2], time_s[len-1], '\0' };
+  	  sprintf(time_s + len - 2, ":%s", minute);
   	}
-	cout<<form_time<<" "
-		<<fromadd<<  " "
+	cout<<time_s<<" : "
+		<< "IP : port > IP : port "
+		<< "length " << Header.len << " bytes"
 		<<endl;
 
 
-
-	// lined packet
 	for (int i =0; i < Header.len; i++){
 
-		for (int l =0; l < linelen; l++){
-			if (i+l < Header.len)
-				// formated
-				printf("%3x", packet[i+l]);
-			else 
+		printf("0x%04x ", i);
+		int j = 0;
+		for (; j < 16; j++){
+			if (i+j > Header.len)
 				cout<< "   ";
+			else 
+				printf("%02x ", packet[i+j]);
 		}
 		cout<<" ";
 
-		// can end befor line
-		for (int l =0; l < linelen && i < Header.len; l++){
-			cout<<printable[packet[i++]];
+		j = 0;
+		for (; j < 16; j++){
+			if (i+j > Header.len)
+				break;
+			else 
+				cout<<printable[packet[i++]];
 		}
+
+		i += j;
 		cout<<endl;
 	}
 
