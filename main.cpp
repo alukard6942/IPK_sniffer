@@ -1,10 +1,108 @@
 #include <stdio.h>
-#include <pcap.h>
-#include <getopt.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
+#include <arpa/inet.h>
 #include <string>
+#include <stdbool.h>
+#include <unistd.h>
+#include <netinet/ether.h>
+#include <iostream>
+
+#include <pcap.h>
+
+/* ethernet headers are always exactly 14 bytes */
+#define SIZE_ETHERNET 14
+
+#define D_HOST_MAC_ADDR 6
+
+/* Ethernet header */
+struct sniff_ethernet {
+        u_char  ether_dhost[D_HOST_MAC_ADDR]; /* destination host address */
+        u_char  ether_shost;                  /* source host address */
+        u_short ether_type;                   /* IP, ARP, RARP, etc */
+};
+
+/* IP header */
+struct sniff_ip *ip_layer;
+struct sniff_ip {
+        u_char  ip_vhl;                 /* version << 4 | header length >> 2 */
+        u_char  ip_tos;                 /* type of service */
+        u_short ip_len;                 /* total length */
+        u_short ip_id;                  /* identification */
+        u_short ip_off;                 /* fragment offset field */
+        u_char  ip_ttl;                 /* time to live */
+        u_char  ip_p;                   /* protocol */
+        u_short ip_sum;                 /* checksum */
+        struct  in_addr ip_src,ip_dst;  /* source and dest address */
+};
+
+std::string pack_header (const struct pcap_pkthdr *header,const u_char *packet) {
+
+	/*Pointers to initialze the structures*/
+	const struct ether_header *eth_header;
+	const struct sniff_ethernet *ethernet;
+	
+	/* Pointers to start point of various headers */
+	const u_char *ip_header;
+	
+	//const u_char *udp_header;
+	/* Variables indicating the length of a packet part*/
+	int ethernet_header_length;
+	int ip_header_length;
+	int length_ip;
+	
+	/* initiate new arrays for MAC/IP addresses */
+	char mac_src[20], mac_dst[20];
+	char ip_src[20], ip_dst[20];
+	
+	/* Packet nbr info */
+	
+	// Get Ethernet packet
+	eth_header = (struct ether_header *) (packet);
+	ethernet = (struct sniff_ethernet*)(packet);
+	
+	// Recover MAC addresses.
+	ether_ntoa_r((struct ether_addr *)&ethernet->ether_shost, (char *) &mac_src);
+	ether_ntoa_r((struct ether_addr *)&ethernet->ether_dhost, (char *) &mac_dst);
+	
+	if (ntohs(eth_header->ether_type) != ETHERTYPE_IP) {return "NONE";}
+	
+	/* Header lengths in bytes */
+	ethernet_header_length = 14;
+	// Find start of IP header.
+	ip_header = packet + ethernet_header_length;
+	/* The second-half of the first byte in ip_header
+	   contains the IP header length (IHL). */
+	ip_header_length = ((*ip_header) & 0x0F);
+	/* The IHL is number of 32-bit segments. Multiply
+	   by four to get a byte count for pointer arithmetic */
+	ip_header_length *= 4;
+	ip_layer = (struct sniff_ip*)(ip_header);
+	
+	// Recover IP addresses.
+	//printf("%s\n", inet_ntoa(ip_layer->ip_src));
+	//printf("%s\n", inet_ntoa(ip_layer->ip_dst));
+
+	// timestamp 
+	struct tm *p = localtime((const time_t*)&header->ts.tv_sec);
+	char form_time[1000];
+	size_t len = strftime(form_time, sizeof form_time - 1, "%FT%T%z", p);
+	// move last 2 digits
+	if (len > 1) {
+		char minute[] = { form_time[len-2], form_time[len-1], '\0' };
+		sprintf(form_time + len - 2, ":%s", minute);
+	}
+
+  	// header in format 
+  	// čas IP : port > IP : port, length délka
+	return std::string(form_time) + " : " + inet_ntoa(ip_layer->ip_src) + " : PORT > " + inet_ntoa(ip_layer->ip_dst) + " : PORT, length " + std::to_string(header->len); 
+
+
+
+  return "hi";
+}
 
 void pack_print(const u_char *packet, struct pcap_pkthdr *header);
 void addexp(std::string *buffer, std::string expr);
@@ -20,6 +118,7 @@ int main(int argc, char *argv[]) {
 	char errbuf[PCAP_ERRBUF_SIZE];	/* Error string */
 	struct bpf_program fp;			/* The compiled filter */
 	std::string filter_exp = "";
+	std::string port = "";
 	bpf_u_int32 mask;				/* Our netmask */
 	bpf_u_int32 net;				/* Our IP */
 	struct pcap_pkthdr header;		/* The header that pcap gives us */
@@ -69,7 +168,7 @@ int main(int argc, char *argv[]) {
 		else if (!strcmp(argm, "-p")){
 			// requres argument
 			if ( i+1 < argc && argv[i+1][0] != '-'){ 
-				addport(&filter_exp, "port " + std::string(argv[++i]));
+				port = argv[++i];
 			}
 			else return usage();
 		}
@@ -77,6 +176,7 @@ int main(int argc, char *argv[]) {
 			return usage();
 		}
 	}
+	if ( port.length()) addport(&filter_exp, "port " + port);
 
 	if (!interface) {
 		pcap_if_t *result;
@@ -90,8 +190,8 @@ int main(int argc, char *argv[]) {
 		for (auto elem = result; elem; elem = elem->next) {
 			printf("%s", elem->name);
 			printf("\n");
-		return 0;
 		} 
+		return 0;
 	}
 
 	/* Find the properties for the device */
@@ -136,21 +236,24 @@ char printable( char c ){
 
 void pack_print(const u_char *packet, struct pcap_pkthdr *header){
 
-	static int iter = 0;
-	static int linelen = 20;
+	const int linelen = 15;
 
 	/* Print its length */
-	printf("%d. len:[%d]\n", header->len);
+	//auto ip = (struct sniff_ip*)(packet + SIZE_ETHERNET);
+    //auto tcp = (struct sniff_tcp*)(packet + SIZE_ETHERNET + size_ip);
+	
+	std::cout<< pack_header(header, packet) << std::endl;
 
 	for (int i =0; i < header->len; i++){
 
+		printf("0x%04x ",i);
 		for (int l =0; l < linelen; l++){
 			if (i+l < header->len)
-				printf("%3x", packet[i+l]);
+				printf("%02x ", packet[i+l]);
 			else 
 				printf("   ");
 		}
-		printf("  ");
+		printf(" ");
 		for (int l =0; l < linelen && i < header->len; l++){
 			int tmp = i+l < header->len ? i+l : header->len ;
 			printf("%c", printable(packet[i++]));
@@ -165,7 +268,7 @@ void addexp(std::string *buffer, std::string expr){
 	if (buffer->length() == 0)
 		*buffer = expr;
 	else 
-		*buffer += " or " + expr;
+		*buffer = "( "+expr + " or " + *buffer +" )" ;
 }
 
 void addport(std::string *buffer, std::string expr){
